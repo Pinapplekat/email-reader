@@ -56,7 +56,7 @@ async function getread() {
   console.log(readData);
   oldReadata = readData;
   readbox.innerHTML = "";
-  document.getElementById("readboxTitle").innerHTML = ""
+  document.getElementById("readboxTitle").innerHTML = "Read"
   document.getElementById("readboxTitle").innerHTML +
     " (" +
     readData.length +

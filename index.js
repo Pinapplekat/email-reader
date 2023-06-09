@@ -34,10 +34,11 @@ var getThread;
 const imap = new Imap(imapConfig);
 const getEmails = () => {
   imap.once("ready", () => {
-    imap.openBox("INBOX", true, () => {
+    imap.openBox("INBOX", false, () => {
       imap.search(["UNSEEN", ["SINCE", new Date()]], (err, results) => {
+        if(err) throw err
         if (!results || !results.length) {
-          // imap.end();
+          imap.end();
           return;
         }
         const f = imap.fetch(results, { bodies: "" });
@@ -83,67 +84,14 @@ const getEmails = () => {
         });
         f.once("end", () => {
           console.log("Done fetching all messages!");
-          // imap.end();
-        });
-      });
-
-      imap.search(["NEW"], (err, results) => {
-        if (!results || !results.length) {
-          // imap.end()
-          return;
-        }
-        const f = imap.fetch(results, { bodies: "" });
-        f.on("message", (msg) => {
-          var msgid = Date.now();
-          msg.on("body", (stream) => {
-            simpleParser(stream, async (err, parsed) => {
-              console.log("You have mail!");
-              console.log(parsed.subject);
-
-              // const {from, subject, textAsHtml, text} = parsed;
-              fs.writeFileSync(
-                `${__dirname}\\emails\\mail\\${msgid}.json`,
-                JSON.stringify(parsed)
-              );
-
-              if (
-                parsed.subject
-                  ?.toLowerCase()
-                  .endsWith("respond with pinapplekat")
-              ) {
-                autoMessage(parsed);
-                rename(
-                  __dirname + "\\emails\\mail\\" + msgid + ".json",
-                  __dirname + "\\emails\\read\\" + msgid + ".json"
-                );
-              }
-              /* Make API call to save the data
-                   Save the retrieved data into a database.
-                   E.t.c
-                */
-            });
-          });
-          msg.once("attributes", (attrs) => {
-            const { uid } = attrs;
-            imap.addFlags(uid, ["\\Seen"], () => {
-              console.log("New e-mail marked as read!");
-            });
-          });
-        });
-        f.once("error", (ex) => {
-          return Promise.reject(ex);
-        });
-        f.once("end", () => {
-          console.log("Done fetching all messages!");
-          // imap.end();
+          imap.end();
         });
       });
     });
-    imap.on("mail", (msg) => {
-      console.log(msg)
-    })
   });
-
+  imap.on("mail", (mail) => {
+    // console.log(mail)
+  })
   imap.once("error", (err) => {
     console.log(err);
   });
@@ -156,6 +104,7 @@ const getEmails = () => {
 };
 getEmails();
 
+
 setInterval(() => {
   try {
     getEmails();
@@ -164,15 +113,19 @@ setInterval(() => {
   }
 }, s(5));
 
+
 function s(int) {
   return int * 1000;
 }
 
+
 app.use(express.static("emails"));
+
 
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
 });
+
 
 app.get("/markasread/:id", (req, res) => {
   const { id } = req.params;
@@ -185,9 +138,10 @@ app.get("/markasread/:id", (req, res) => {
 
 app.get("/delete/:id", (req, res) => {
   const { id } = req.params;
-  fs.unlinkSync(__dirname + "/emails/read/" + id + ".json");
+  fs.unlinkSync(__dirname+"/emails/read/"+id+".json")
   res.redirect("/");
 });
+
 
 function rename(file, newName) {
   fs.renameSync(file, newName, (err) => {
@@ -197,6 +151,7 @@ function rename(file, newName) {
   });
 }
 
+
 app.get("/mail/:id", (req, res) => {
   var { id } = req.params;
   var maildata = fs.readFileSync(__dirname + "/emails/mail/" + id + ".json");
@@ -205,6 +160,7 @@ app.get("/mail/:id", (req, res) => {
   res.send(maildata.text);
 });
 
+
 app.get("/read/:id", (req, res) => {
   var { id } = req.params;
   var maildata = fs.readFileSync(__dirname + "/emails/read/" + id + ".json");
@@ -212,6 +168,7 @@ app.get("/read/:id", (req, res) => {
   if (maildata.html) return res.send(maildata.html);
   res.send(maildata.text);
 });
+
 
 app.get("/mail", (req, res) => {
   var filedirs = [];
@@ -224,6 +181,7 @@ app.get("/mail", (req, res) => {
   });
 });
 
+
 app.get("/read", (req, res) => {
   var filedirs = [];
   fs.readdir(__dirname + "/emails/read", (err, files) => {
@@ -235,12 +193,11 @@ app.get("/read", (req, res) => {
   });
 });
 
+
 app.get("/send", (req, res) => {
   var { ai, user, message, id } = req.query;
   if (id) {
-    var maildata = fs.readFileSync(
-      __dirname + "\\emails\\mail\\" + id + ".json"
-    );
+    var maildata = fs.readFileSync(__dirname + "\\emails\\mail\\" + id + ".json")
     maildata = JSON.parse(maildata);
     if (ai == "true") {
       autoMessage(maildata, res);
@@ -251,15 +208,14 @@ app.get("/send", (req, res) => {
 app.get("/sendread", (req, res) => {
   var { ai, user, message, id } = req.query;
   if (id) {
-    var maildata = fs.readFileSync(
-      __dirname + "\\emails\\read\\" + id + ".json"
-    );
+    var maildata = fs.readFileSync(__dirname + "\\emails\\read\\" + id + ".json")
     maildata = JSON.parse(maildata);
     if (ai == "true") {
       autoMessage(maildata, res);
     }
   }
 });
+
 
 async function autoMessage(maildata, res) {
   console.log("Getting Discord data...");
