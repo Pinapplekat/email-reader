@@ -21,72 +21,126 @@ const imapConfig = {
   port: 993,
   tls: true,
 };
-let transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.GMAIL,
-    pass: process.env.GPASS,
-  },
-});
+
 var getThread;
 const imap = new Imap(imapConfig);
 const getEmails = () => {
   imap.once("ready", () => {
-    imap.openBox("INBOX", false, () => {
-      imap.search(["UNSEEN", ["SINCE", new Date()]], (err, results) => {
-        if(err) throw err
-        if (!results || !results.length) {
-          imap.end();
-          return;
-        }
-        const f = imap.fetch(results, { bodies: "" });
-        f.on("message", (msg) => {
-          var msgid = Date.now();
-          msg.on("body", (stream) => {
-            simpleParser(stream, async (err, parsed) => {
-              console.log("You have mail!");
-              console.log(parsed.subject);
+    imap.openBox("INBOX", false, (err, box) => {
 
-              // const {from, subject, textAsHtml, text} = parsed;
-              fs.writeFileSync(
-                `${__dirname}\\emails\\mail\\${msgid}.json`,
-                JSON.stringify(parsed)
-              );
+      imap.on("mail", (seqno) => {
+        imap.search(["UNSEEN", ["SINCE", new Date()]], (err, results) => {
+          if (err) throw err
+          if (!results || !results.length) {
+            imap.end()
+            return
+          }
+          console.log(seqno)
+          var f = imap.fetch(results, { bodies: "" })
+          f.on("message", (msg) => {
+            console.log("message received")
+            var msgid = Date.now();
+            msg.on("body", (stream) => {
+              simpleParser(stream, async (err, parsed) => {
+                console.log("________________________");
+                console.log("You have mail!");
+                console.log("--------------");
+                console.log(parsed.subject);
+                console.log("--------------");
+                console.log(parsed.text.substring(0,150) + '...')
+                console.log("________________________");
 
-              if (
-                parsed.subject
-                  ?.toLowerCase()
-                  .endsWith("respond with pinapplekat")
-              ) {
-                autoMessage(parsed);
-                rename(
-                  __dirname + "\\emails\\mail\\" + msgid + ".json",
-                  __dirname + "\\emails\\read\\" + msgid + ".json"
+                // const {from, subject, textAsHtml, text} = parsed;
+                fs.writeFileSync(
+                  `${__dirname}/emails/mail/${msgid}.json`,
+                  JSON.stringify(parsed)
                 );
-              }
-              /* Make API call to save the data
-                   Save the retrieved data into a database.
-                   E.t.c
-                */
+
+                if (
+                  parsed.subject
+                    ?.toLowerCase()
+                    .endsWith("respond with pinapplekat")
+                ) {
+                  autoMessage(parsed);
+                  rename(
+                    __dirname + "/emails/mail/" + msgid + ".json",
+                    __dirname + "/emails/read/" + msgid + ".json"
+                  );
+                }
+                /* Make API call to save the data
+                     Save the retrieved data into a database.
+                     E.t.c
+                  */
+              });
+            });
+            msg.once("attributes", (attrs) => {
+              const { uid } = attrs;
+              imap.addFlags(uid, ["\\Seen"], () => {
+                console.log("New e-mail marked as read!");
+              });
             });
           });
-          msg.once("attributes", (attrs) => {
-            const { uid } = attrs;
-            imap.addFlags(uid, ["\\Seen"], () => {
-              console.log("New e-mail marked as read!");
-            });
+          f.once("error", (ex) => {
+            return Promise.reject(ex);
           });
-        });
-        f.once("error", (ex) => {
-          return Promise.reject(ex);
-        });
-        f.once("end", () => {
-          console.log("Done fetching all messages!");
-          imap.end();
-        });
-      });
+          f.once("end", () => {
+            console.log("Done fetching all messages!");
+            // imap.end();
+          });
+        })
+      })
+      // imap.search(["UNSEEN", ["SINCE", new Date()]], (err, results) => {
+      //   if(err) throw err
+      //   if (!results || !results.length) {
+      //     imap.end();
+      //     return;
+      //   }
+      //   const f = imap.fetch(results, { bodies: "" });
+      //   f.on("message", (msg) => {
+      //     var msgid = Date.now();
+      //     msg.on("body", (stream) => {
+      //       simpleParser(stream, async (err, parsed) => {
+      //         console.log("You have mail!");
+      //         console.log(parsed.subject);
+
+      //         // const {from, subject, textAsHtml, text} = parsed;
+      //         fs.writeFileSync(
+      //           `${__dirname}/emails/mail/${msgid}.json`,
+      //           JSON.stringify(parsed)
+      //         );
+
+      //         if (
+      //           parsed.subject
+      //             ?.toLowerCase()
+      //             .endsWith("respond with pinapplekat")
+      //         ) {
+      //           autoMessage(parsed);
+      //           rename(
+      //             __dirname + "/emails/mail/" + msgid + ".json",
+      //             __dirname + "/emails/read/" + msgid + ".json"
+      //           );
+      //         }
+      //         /* Make API call to save the data
+      //              Save the retrieved data into a database.
+      //              E.t.c
+      //           */
+      //       });
+      //     });
+      //     msg.once("attributes", (attrs) => {
+      //       const { uid } = attrs;
+      //       imap.addFlags(uid, ["\\Seen"], () => {
+      //         console.log("New e-mail marked as read!");
+      //       });
+      //     });
+      //   });
+      //   f.once("error", (ex) => {
+      //     return Promise.reject(ex);
+      //   });
+      //   f.once("end", () => {
+      //     console.log("Done fetching all messages!");
+      //     imap.end();
+      //   });
+      // });
     });
   });
   imap.on("mail", (mail) => {
@@ -107,7 +161,7 @@ getEmails();
 
 setInterval(() => {
   try {
-    getEmails();
+    // getEmails();
   } catch (e) {
     console.log(e);
   }
@@ -130,15 +184,15 @@ app.get("/", (req, res) => {
 app.get("/markasread/:id", (req, res) => {
   const { id } = req.params;
   rename(
-    __dirname + "\\emails\\mail\\" + id + ".json",
-    __dirname + "\\emails\\read\\" + id + ".json"
+    __dirname + "/emails/mail/" + id + ".json",
+    __dirname + "/emails/read/" + id + ".json"
   );
   res.redirect("/");
 });
 
 app.get("/delete/:id", (req, res) => {
   const { id } = req.params;
-  fs.unlinkSync(__dirname+"/emails/read/"+id+".json")
+  fs.unlinkSync(__dirname + "/emails/read/" + id + ".json")
   res.redirect("/");
 });
 
@@ -197,7 +251,7 @@ app.get("/read", (req, res) => {
 app.get("/send", (req, res) => {
   var { ai, user, message, id } = req.query;
   if (id) {
-    var maildata = fs.readFileSync(__dirname + "\\emails\\mail\\" + id + ".json")
+    var maildata = fs.readFileSync(__dirname + "/emails/mail/" + id + ".json")
     maildata = JSON.parse(maildata);
     if (ai == "true") {
       autoMessage(maildata, res);
@@ -208,7 +262,7 @@ app.get("/send", (req, res) => {
 app.get("/sendread", (req, res) => {
   var { ai, user, message, id } = req.query;
   if (id) {
-    var maildata = fs.readFileSync(__dirname + "\\emails\\read\\" + id + ".json")
+    var maildata = fs.readFileSync(__dirname + "/emails/read/" + id + ".json")
     maildata = JSON.parse(maildata);
     if (ai == "true") {
       autoMessage(maildata, res);
@@ -257,6 +311,16 @@ async function autoMessage(maildata, res) {
   });
   console.log("AI response recieved");
   // console.log(response.data.choices[0].message);
+  let transporter = nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // true for 465, false for other ports
+    auth: {
+      user: process.env.GMAIL,
+      pass: process.env.GPASS,
+    },
+  });
+  console.log("Transport configured.")
   console.log("Sending mail...");
   let info = await transporter.sendMail({
     from: '"Pinapplekat (AI Assistant)" <elijah.ryerson@gmail.com>', // sender address
@@ -270,6 +334,7 @@ async function autoMessage(maildata, res) {
     subject: otherdata.subject, // Subject line
     text: response.data.choices[0].message.content, // plain text body
   });
+  console.log(info)
   console.log("Mail sent");
   if (res) res.redirect("/");
 }
